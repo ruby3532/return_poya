@@ -96,15 +96,57 @@ async function fetchWmsTable(receiptNo) {
     // 等待登入完成
     await page.waitForTimeout(5000);
 
-    // 2. 直接導航到進倉單詳細頁面
-    console.log("📦 正在導航到進倉單詳細頁面...");
-    
-    // 直接導航到詳細頁面 (使用實際的ID)
-    const detailUrl = `https://wms.rentrap.com/admin/receipts/42940`;
-    console.log(`🔗 導航到: ${detailUrl}`);
-    await page.goto(detailUrl, { waitUntil: 'networkidle' });
-    await page.waitForTimeout(3000);
-    console.log("✅ 成功進入進倉單詳細頁面");
+    // 2. 進入進倉單列表頁
+    console.log("📦 正在前往進倉單列表...");
+    await page.goto("https://wms.rentrap.com/admin/receipts", { waitUntil: 'networkidle' });
+    await page.waitForTimeout(2000);
+
+    // 3. 在列表中搜尋進倉單關鍵字（例如：寶雅退貨_20250627_壞品）
+    console.log(`🔍 正在搜尋進倉單關鍵字: ${receiptNo}`);
+    const searchSelectors = [
+      "input[placeholder*='搜尋']",
+      "input[type='search']",
+      "input[name*='search']",
+      "input[class*='search']",
+      "input[placeholder*='Search']",
+    ];
+    let foundSearch = false;
+    for (const selector of searchSelectors) {
+      try {
+        await page.waitForSelector(selector, { timeout: 3000 });
+        await page.fill(selector, "");
+        await page.fill(selector, receiptNo);
+        await page.keyboard.press("Enter");
+        foundSearch = true;
+        break;
+      } catch {}
+    }
+    if (!foundSearch) {
+      throw new Error("找不到搜尋輸入框");
+    }
+    // 等待資料刷新並直接等待出現關鍵字文字（避免等待整張表）
+    await page.waitForTimeout(2000);
+    const resultCell = page.locator(`text=${receiptNo}`).first();
+    await resultCell.waitFor({ timeout: 15000 });
+
+    // 4. 直接取得搜尋結果該列的連結並以導航方式進入
+    console.log("📋 正在開啟搜尋結果的詳細頁...");
+    let href = null;
+    try {
+      href = await page.locator(`tr:has-text("${receiptNo}") a`).first().getAttribute('href');
+    } catch {}
+    if (!href) {
+      try {
+        href = await page.locator(`a:has-text("${receiptNo}")`).first().getAttribute('href');
+      } catch {}
+    }
+    if (!href) {
+      throw new Error("找不到進倉單連結 href");
+    }
+    const absoluteUrl = new URL(href, page.url()).toString();
+    console.log(`🔗 進入詳細頁: ${absoluteUrl}`);
+    await page.goto(absoluteUrl, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1500);
 
     // 5. 讀取進倉單詳細頁面的表格
     console.log("📊 正在讀取進倉單詳細表格資料...");
